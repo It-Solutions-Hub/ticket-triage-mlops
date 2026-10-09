@@ -1,0 +1,28 @@
+# Cleanup pipeline: destroys everything Terraform created. The resource group itself is NOT touched.
+trigger: none
+pr: none
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  resourceGroupName: 'REPLACE_WITH_PROVIDED_RESOURCE_GROUP'
+  tfstateStorage: 'REPLACE_WITH_YOUR_TFSTATE_STORAGE_ACCOUNT'
+  userObjectId: 'REPLACE_WITH_YOUR_ENTRA_OBJECT_ID'
+  serviceConnection: 'sc-mlops-lab'
+  envName: 'dev'
+
+steps:
+- task: AzureCLI@2
+  displayName: 'terraform destroy'
+  inputs:
+    azureSubscription: ${{ variables.serviceConnection }}
+    scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: bash "$(Build.SourcesDirectory)/scripts/tf.sh" destroy
+  env:
+    RESOURCE_GROUP: $(resourceGroupName)
+    TFSTATE_STORAGE: $(tfstateStorage)
+    TF_VAR_resource_group_name: $(resourceGroupName)
+    TF_VAR_user_object_id: $(userObjectId)
+    TF_VAR_environment: $(envName)

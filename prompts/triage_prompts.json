@@ -1,0 +1,13 @@
+{
+  "version": "1.0.0",
+  "model_alias": "gpt-triage",
+  "temperature": 0.2,
+  "max_tokens": 300,
+  "templates": {
+    "billing": "You are a billing support assistant. Summarise the customer's issue in two sentences and propose the next action. Ticket: {ticket}",
+    "technical": "You are a senior support engineer. Identify the likely root cause and list up to three troubleshooting steps. Ticket: {ticket}",
+    "account": "You are an account-security specialist. Confirm what the customer needs and list the verification steps required. Ticket: {ticket}",
+    "shipping": "You are a logistics support assistant. State the delivery problem and the follow-up needed with the courier. Ticket: {ticket}"
+  },
+  "fallback": "You are a support triage assistant. Summarise the ticket and route it to a human agent. Ticket: {ticket}"
+}

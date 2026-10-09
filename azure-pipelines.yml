@@ -1,0 +1,152 @@
+# Ticket-triage MLOps/LLMOps pipeline
+# CI (tests + lint) -> Terraform plan -> Terraform apply -> manual gate -> Databricks train
+trigger: none   # lab: run manually. In production: trigger on main for infra/, ml/, prompts/
+pr: none
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  # ---- EDIT THESE 6 ----
+  resourceGroupName: 'REPLACE_WITH_PROVIDED_RESOURCE_GROUP'
+  tfstateStorage: 'REPLACE_WITH_YOUR_TFSTATE_STORAGE_ACCOUNT'
+  userObjectId: 'REPLACE_WITH_YOUR_ENTRA_OBJECT_ID'
+  databricksWorkspaceName: 'REPLACE_WITH_WORKSPACE_NAME'
+  keyVaultName: 'REPLACE_WITH_KEY_VAULT_NAME'
+  dataLakeStorageName: 'REPLACE_WITH_DATA_LAKE_STORAGE_NAME'
+  # ---- leave as is ----
+  serviceConnection: 'sc-mlops-lab'
+  envName: 'dev'
+  secretScope: 'kv-scope'
+  dbrVersion: '15.4.x-scala2.12'
+  nodeType: 'Standard_DS3_v2'
+  accuracyThreshold: '0.85'
+
+stages:
+- stage: CI
+  displayName: 'CI: test + lint'
+  jobs:
+  - job: validate
+    steps:
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: '3.11'
+    - script: pip install -r requirements-dev.txt
+      displayName: 'Install dependencies'
+    - script: pytest --junitxml=test-results.xml
+      displayName: 'Unit tests (model + prompts)'
+    - task: PublishTestResults@2
+      condition: succeededOrFailed()
+      inputs:
+        testResultsFiles: 'test-results.xml'
+    - script: python scripts/validate_prompts.py
+      displayName: 'Validate prompt config'
+    - script: sed -i 's/\r$//' scripts/*.sh
+      displayName: 'Normalize line endings'
+    - script: |
+        bash scripts/install_terraform.sh
+        terraform fmt -check -recursive infra
+        terraform -chdir=infra init -backend=false -input=false
+        terraform -chdir=infra validate
+      displayName: 'Terraform fmt + validate'
+
+- stage: Plan
+  displayName: 'Terraform plan'
+  dependsOn: CI
+  jobs:
+  - job: plan
+    steps:
+    - script: sed -i 's/\r$//' scripts/*.sh
+      displayName: 'Normalize line endings'
+    - task: AzureCLI@2
+      displayName: 'terraform plan'
+      inputs:
+        azureSubscription: ${{ variables.serviceConnection }}
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: bash "$(Build.SourcesDirectory)/scripts/tf.sh" plan
+      env:
+        RESOURCE_GROUP: $(resourceGroupName)
+        TFSTATE_STORAGE: $(tfstateStorage)
+        TF_VAR_resource_group_name: $(resourceGroupName)
+        TF_VAR_user_object_id: $(userObjectId)
+        TF_VAR_environment: $(envName)
+        TF_VAR_databricks_workspace_name: $(databricksWorkspaceName)
+        TF_VAR_key_vault_name: $(keyVaultName)
+        TF_VAR_storage_account_name: $(dataLakeStorageName)
+    - publish: $(Build.SourcesDirectory)/infra/tfplan
+      artifact: tfplan
+
+- stage: Apply
+  displayName: 'Terraform apply'
+  dependsOn: Plan
+  jobs:
+  - deployment: apply_infra
+    environment: 'mlops-dev'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - checkout: self
+          - script: sed -i 's/\r$//' scripts/*.sh
+            displayName: 'Normalize line endings'
+          - download: current
+            artifact: tfplan
+          - script: cp "$(Pipeline.Workspace)/tfplan/tfplan" "$(Build.SourcesDirectory)/infra/tfplan"
+            displayName: 'Restore plan file'
+          - task: AzureCLI@2
+            displayName: 'terraform apply'
+            inputs:
+              azureSubscription: ${{ variables.serviceConnection }}
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: bash "$(Build.SourcesDirectory)/scripts/tf.sh" apply
+            env:
+              RESOURCE_GROUP: $(resourceGroupName)
+              TFSTATE_STORAGE: $(tfstateStorage)
+              TF_VAR_resource_group_name: $(resourceGroupName)
+              TF_VAR_user_object_id: $(userObjectId)
+              TF_VAR_environment: $(envName)
+
+- stage: Gate
+  displayName: 'Gate: create Key Vault-backed secret scope'
+  dependsOn: Apply
+  jobs:
+  - job: wait_for_scope
+    pool: server
+    timeoutInMinutes: 40
+    steps:
+    - task: ManualValidation@0
+      timeoutInMinutes: 30
+      inputs:
+        notifyUsers: ''
+        onTimeout: 'reject'
+        instructions: |
+          In the Databricks workspace open <workspace-url>#secrets/createScope and create a
+          Key Vault-backed scope named "kv-scope" (Manage principal: All Users).
+          Then click Resume.
+
+- stage: Train
+  displayName: 'Train on Databricks'
+  dependsOn: Gate
+  jobs:
+  - job: train
+    steps:
+    - script: sed -i 's/\r$//' scripts/*.sh
+      displayName: 'Normalize line endings'
+    - task: AzureCLI@2
+      displayName: 'Deploy prompts + run training job'
+      inputs:
+        azureSubscription: ${{ variables.serviceConnection }}
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: bash "$(Build.SourcesDirectory)/scripts/deploy_ml.sh"
+      env:
+        RESOURCE_GROUP: $(resourceGroupName)
+        TFSTATE_STORAGE: $(tfstateStorage)
+        TF_VAR_environment: $(envName)
+        SECRET_SCOPE: $(secretScope)
+        DBR_VERSION: $(dbrVersion)
+        NODE_TYPE: $(nodeType)
+        ACCURACY_THRESHOLD: $(accuracyThreshold)
+        GIT_SHA: $(Build.SourceVersion)
