@@ -1,3 +1,20 @@
+variable "location" {
+  type        = string
+  default     = "centralindia"
+  description = "Region for all resources. Must support Databricks Custom Model Serving."
+
+  validation {
+    condition = contains([
+      "australiaeast", "brazilsouth", "canadacentral", "centralindia", "centralus",
+      "eastasia", "eastus", "eastus2", "francecentral", "germanywestcentral",
+      "japaneast", "koreacentral", "northcentralus", "northeurope", "southcentralus",
+      "southeastasia", "swedencentral", "switzerlandnorth", "uaenorth",
+      "westeurope", "westus", "westus2", "westus3"
+    ], var.location)
+    error_message = "This region does not support Databricks Custom Model Serving. Use one of the listed regions."
+  }
+}
+
 variable "resource_group_name" {
   type        = string
   description = "Pre-created resource group. Terraform only READS it - it never creates one."
