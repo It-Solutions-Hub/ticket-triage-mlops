@@ -8,6 +8,9 @@ DBR_VERSION="${DBR_VERSION:-15.4.x-scala2.12}"
 NODE_TYPE="${NODE_TYPE:-Standard_DS3_v2}"
 ACCURACY_THRESHOLD="${ACCURACY_THRESHOLD:-0.85}"
 GIT_SHA="${GIT_SHA:-local}"
+: "${WORKSPACE_NAME:?}"
+# Unity Catalog names can't contain hyphens, so the workspace-named catalog uses underscores
+UC_CATALOG="$(echo "$WORKSPACE_NAME" | tr '[:upper:]' '[:lower:]' | tr '-' '_')"
 
 TF_OUT="$(bash "$ROOT/scripts/tf.sh" output)"
 STORAGE="$(jq -r '.storage_account_name.value' <<<"$TF_OUT")"
@@ -67,6 +70,7 @@ cat > "$JOB" <<JSON
       "notebook_path": "/Shared/ticket-triage/train_notebook",
       "source": "WORKSPACE",
       "base_parameters": {
+        "uc_catalog": "${UC_CATALOG}",
         "secret_scope": "${SECRET_SCOPE}",
         "storage_account": "${STORAGE}",
         "accuracy_threshold": "${ACCURACY_THRESHOLD}",
