@@ -150,3 +150,4 @@ stages:
         NODE_TYPE: $(nodeType)
         ACCURACY_THRESHOLD: $(accuracyThreshold)
         GIT_SHA: $(Build.SourceVersion)
+        WORKSPACE_NAME: $(databricksWorkspaceName)
