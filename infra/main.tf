@@ -24,7 +24,7 @@ locals {
 resource "azurerm_storage_account" "lake" {
   name                            = var.storage_account_name
   resource_group_name             = data.azurerm_resource_group.lab.name
-  location                        = data.azurerm_resource_group.lab.location
+  location                        = var.location
   account_tier                    = "Standard"
   account_replication_type        = "LRS"
   account_kind                    = "StorageV2"
@@ -45,7 +45,7 @@ resource "azurerm_storage_container" "lake" {
 resource "azurerm_key_vault" "kv" {
   name                       = var.key_vault_name
   resource_group_name        = data.azurerm_resource_group.lab.name
-  location                   = data.azurerm_resource_group.lab.location
+  location                   = var.location
   tenant_id                  = data.azurerm_client_config.current.tenant_id
   sku_name                   = "standard"
   soft_delete_retention_days = 7
@@ -102,7 +102,7 @@ resource "azurerm_key_vault_secret" "llm_key" {
 resource "azurerm_databricks_workspace" "dbx" {
   name                        = var.databricks_workspace_name
   resource_group_name         = data.azurerm_resource_group.lab.name
-  location                    = data.azurerm_resource_group.lab.location
+  location                    = var.location
   sku                         = "premium"
   managed_resource_group_name = "${var.databricks_workspace_name}-managed-rg"
   tags                        = local.tags
