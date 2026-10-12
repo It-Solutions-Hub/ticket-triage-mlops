@@ -22,12 +22,13 @@ import cloudpickle
 from mlflow.models import infer_signature
 from mlflow.tracking import MlflowClient
 
-dbutils.widgets.text("uc_catalog", "databricks061026")
+dbutils.widgets.text("uc_catalog", "")
 dbutils.widgets.text("uc_schema", "ticket_triage")
 dbutils.widgets.text("model_name", "ticket_triage_classifier")
 dbutils.widgets.text("endpoint_name", "ticket-triage-endpoint")
 
 catalog = dbutils.widgets.get("uc_catalog")
+assert catalog, "uc_catalog was not passed by the pipeline"
 schema = dbutils.widgets.get("uc_schema")
 full_model_name = f"{catalog}.{schema}.{dbutils.widgets.get('model_name')}"
 endpoint_name = dbutils.widgets.get("endpoint_name")
